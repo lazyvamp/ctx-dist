@@ -27,9 +27,10 @@ Browse the [latest release](https://github.com/lazyvamp/ctx-dist/releases/latest
 | OS    | Arch        | Binary                  |
 | ----- | ----------- | ----------------------- |
 | macOS | arm64       | `ctx-darwin-arm64`      |
-| macOS | amd64       | `ctx-darwin-amd64`      |
 | Linux | amd64       | `ctx-linux-amd64`       |
 | Linux | arm64       | `ctx-linux-arm64`       |
+
+macOS Intel (x86_64) is not shipped as a native binary. Rosetta runs the arm64 build fine.
 
 Each release also ships `ctx-mcp-*` (the MCP server) and a `SHA256SUMS` file.
 
