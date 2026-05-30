@@ -18,6 +18,8 @@ brew install lazyvamp/ctx/ctx
 curl -fsSL https://raw.githubusercontent.com/lazyvamp/ctx-dist/main/install.sh | sh
 ```
 
+The installer also wires a `(.ctx)` badge into your shell prompt automatically — appears in the prompt whenever you `cd` into a git repo containing a ctx palace. To skip that step, set `CTX_SKIP_SHELL_HOOK=1` before piping.
+
 ### Manual
 
 Browse the [latest release](https://github.com/lazyvamp/ctx-dist/releases/latest) and download the binary for your platform.

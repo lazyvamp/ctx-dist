@@ -23,6 +23,55 @@ REPO="lazyvamp/ctx-dist"
 INSTALL_DIR="${CTX_INSTALL_DIR:-/usr/local/bin}"
 VERSION="${CTX_VERSION:-latest}"
 
+# Sentinel comments marking the block install.sh writes into your rc
+# file. Used by both install and uninstall to find/remove the hook
+# idempotently. Don't edit them by hand — install.sh greps for these.
+SHELL_HOOK_START="# >>> ctx shell integration >>>"
+SHELL_HOOK_END="# <<< ctx shell integration <<<"
+
+# detect_rc_file echoes the path of the rc file we'd modify for the
+# detected shell, or empty if we don't recognise the shell. Honours
+# $ZDOTDIR for zsh; on macOS bash, prefers .bash_profile (login shells
+# read it) over .bashrc.
+detect_rc_file() {
+    case "${SHELL:-}" in
+        */zsh)
+            echo "${ZDOTDIR:-$HOME}/.zshrc"
+            ;;
+        */bash)
+            if [ "$(uname -s)" = "Darwin" ] && [ -f "$HOME/.bash_profile" ]; then
+                echo "$HOME/.bash_profile"
+            else
+                echo "$HOME/.bashrc"
+            fi
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+detect_shell_name() {
+    case "${SHELL:-}" in
+        */zsh)  echo zsh ;;
+        */bash) echo bash ;;
+        *)      echo "" ;;
+    esac
+}
+
+remove_shell_hook() {
+    for rc in "${ZDOTDIR:-$HOME}/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
+        if [ -f "$rc" ] && grep -qxF "$SHELL_HOOK_START" "$rc"; then
+            # sed -i has incompatible syntax across BSD (macOS) and GNU
+            # (linux). The portable workaround: -i.bak with an explicit
+            # backup extension, then rm the backup.
+            sed -i.ctx-bak "/^$(printf '%s' "$SHELL_HOOK_START" | sed 's/[][\.*^$/]/\\&/g')\$/,/^$(printf '%s' "$SHELL_HOOK_END" | sed 's/[][\.*^$/]/\\&/g')\$/d" "$rc"
+            rm -f "${rc}.ctx-bak"
+            echo "    removed shell hook from ${rc}"
+        fi
+    done
+}
+
 # ── Uninstall path ───────────────────────────────────────────────────
 # Handled before platform detection — uninstall doesn't care which
 # OS/arch produced the binaries it's removing. Honours $CTX_INSTALL_DIR
@@ -46,6 +95,7 @@ if [ "${1:-}" = "--uninstall" ]; then
     if [ "$removed" -eq 0 ]; then
         echo "    nothing to remove — neither ctx nor ctx-mcp found under ${INSTALL_DIR}"
     fi
+    remove_shell_hook
     exit 0
 fi
 
@@ -181,5 +231,39 @@ fi
 echo "==> Installed:"
 echo "    ${INSTALL_DIR}/ctx"
 echo "    ${INSTALL_DIR}/ctx-mcp"
+
+# ── Shell prompt integration ─────────────────────────────────────────
+# Append `eval "$(ctx --shell zsh|bash)"` to the user's rc file so
+# their prompt grows a (.ctx) badge in palace-bearing directories.
+# Skip with CTX_SKIP_SHELL_HOOK=1. Idempotent — sentinel comments let
+# us detect prior installs and avoid duplicating the block.
+install_shell_hook() {
+    if [ -n "${CTX_SKIP_SHELL_HOOK:-}" ]; then
+        echo "==> Shell hook: skipped (CTX_SKIP_SHELL_HOOK set)"
+        return
+    fi
+    shell_name="$(detect_shell_name)"
+    rc_file="$(detect_rc_file)"
+    if [ -z "$shell_name" ] || [ -z "$rc_file" ]; then
+        echo "==> Shell hook: not installed (unsupported \$SHELL=${SHELL:-unset})"
+        echo "    install manually: echo 'eval \"\$(ctx --shell zsh)\"' >> ~/.zshrc"
+        return
+    fi
+    if [ -f "$rc_file" ] && grep -qxF "$SHELL_HOOK_START" "$rc_file"; then
+        echo "==> Shell hook: already present in ${rc_file}"
+        return
+    fi
+    {
+        printf '\n%s\n' "$SHELL_HOOK_START"
+        printf '%s\n'   "# Adds a (.ctx) badge to the prompt in palace-bearing repos."
+        printf '%s\n'   "# Managed by ctx-dist/install.sh — edit at your own risk."
+        printf '%s\n'   'eval "$(ctx --shell '"$shell_name"')"'
+        printf '%s\n'   "$SHELL_HOOK_END"
+    } >> "$rc_file"
+    echo "==> Shell hook: added to ${rc_file}"
+    echo "    restart your shell (or 'source ${rc_file}') to activate the (.ctx) badge"
+}
+install_shell_hook
+
 echo
 echo "Verify with: ctx --version"
