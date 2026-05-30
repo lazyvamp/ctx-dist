@@ -104,7 +104,11 @@ else
 fi
 
 for asset in "$CTX_NAME" "$MCP_NAME"; do
-    expected="$(grep " ${asset}$" SHA256SUMS | awk '{print $1}')"
+    # Take only the first match — guards against a malformed SHA256SUMS
+    # that lists the same asset twice (e.g. from a bad CI glob).
+    # Duplicate entries would otherwise produce a multi-line `expected`
+    # and silently fail the string comparison below.
+    expected="$(grep " ${asset}$" SHA256SUMS | awk 'NR==1 {print $1}')"
     if [ -z "$expected" ]; then
         echo "no checksum for ${asset} in SHA256SUMS — refusing to install" >&2
         exit 1
