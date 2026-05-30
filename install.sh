@@ -40,16 +40,35 @@ detect_arch() {
 OS="$(detect_os)"
 ARCH="$(detect_arch)"
 
+# macOS Intel native builds aren't shipped. Rosetta runs the arm64
+# binary, but we don't try to detect Rosetta here — give a clear
+# message and exit instead of downloading a 404.
+if [ "$OS" = "darwin" ] && [ "$ARCH" = "amd64" ]; then
+    echo "macOS Intel (x86_64) native builds are not published." >&2
+    echo "Use Rosetta on the arm64 build, or build from source." >&2
+    exit 1
+fi
+
 # ── Resolve version ──────────────────────────────────────────────────
 # `latest` → look up the actual tag via the GitHub redirect on the
 # /releases/latest URL. Avoids hitting the API (rate-limited for
 # unauthenticated users on busy networks) and works with just curl.
+#
+# Gotcha: if NO published (non-draft) release exists, GitHub redirects
+# /releases/latest back to /releases (no /tag/ in the path). The sed
+# strip then leaves the full URL in VERSION, which silently corrupts
+# the download URL downstream. Validate the result looks like a vX.Y.Z
+# tag before proceeding.
 if [ "$VERSION" = "latest" ]; then
     VERSION="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" | sed 's#.*/tag/##')"
-    if [ -z "$VERSION" ]; then
-        echo "could not resolve latest release tag from github.com/${REPO}" >&2
-        exit 1
-    fi
+    case "$VERSION" in
+        v[0-9]*) ;;  # looks like a tag (vX.Y.Z), proceed
+        *)
+            echo "could not resolve a latest release tag from github.com/${REPO}." >&2
+            echo "Is there a published (non-draft) release? See https://github.com/${REPO}/releases" >&2
+            exit 1
+            ;;
+    esac
 fi
 
 BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
