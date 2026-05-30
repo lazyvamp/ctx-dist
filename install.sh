@@ -6,6 +6,9 @@
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/lazyvamp/ctx-dist/main/install.sh | sh
 #
+# Uninstall:
+#   curl -fsSL https://raw.githubusercontent.com/lazyvamp/ctx-dist/main/install.sh | sh -s -- --uninstall
+#
 # Env vars:
 #   CTX_VERSION      — pin a specific tag (default: latest)
 #   CTX_INSTALL_DIR  — install prefix (default: /usr/local/bin)
@@ -19,6 +22,32 @@ set -eu
 REPO="lazyvamp/ctx-dist"
 INSTALL_DIR="${CTX_INSTALL_DIR:-/usr/local/bin}"
 VERSION="${CTX_VERSION:-latest}"
+
+# ── Uninstall path ───────────────────────────────────────────────────
+# Handled before platform detection — uninstall doesn't care which
+# OS/arch produced the binaries it's removing. Honours $CTX_INSTALL_DIR
+# so users who installed to a custom prefix can uninstall the same way.
+if [ "${1:-}" = "--uninstall" ]; then
+    echo "==> Uninstalling ctx from ${INSTALL_DIR}"
+    removed=0
+    for bin in ctx ctx-mcp; do
+        target="${INSTALL_DIR}/${bin}"
+        if [ -e "$target" ]; then
+            if [ -w "$(dirname "$target")" ]; then
+                rm -f "$target"
+            else
+                echo "    sudo needed to remove ${target}"
+                sudo rm -f "$target"
+            fi
+            echo "    removed ${target}"
+            removed=$((removed + 1))
+        fi
+    done
+    if [ "$removed" -eq 0 ]; then
+        echo "    nothing to remove — neither ctx nor ctx-mcp found under ${INSTALL_DIR}"
+    fi
+    exit 0
+fi
 
 # ── Platform detection ───────────────────────────────────────────────
 detect_os() {

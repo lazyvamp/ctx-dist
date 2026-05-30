@@ -34,6 +34,18 @@ macOS Intel (x86_64) is not shipped as a native binary. Rosetta runs the arm64 b
 
 Each release also ships `ctx-mcp-*` (the MCP server) and a `SHA256SUMS` file.
 
+## Uninstalling
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lazyvamp/ctx-dist/main/install.sh | sh -s -- --uninstall
+```
+
+Or remove the binaries directly:
+
+```bash
+sudo rm -f /usr/local/bin/ctx /usr/local/bin/ctx-mcp
+```
+
 ## Verifying
 
 ```bash
