@@ -139,7 +139,7 @@ fi
 # the download URL downstream. Validate the result looks like a vX.Y.Z
 # tag before proceeding.
 if [ "$VERSION" = "latest" ]; then
-    VERSION="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" | sed 's#.*/tag/##')"
+    VERSION="$(curl -fsSLI --connect-timeout 10 --max-time 30 -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" | sed 's#.*/tag/##')"
     case "$VERSION" in
         v[0-9]*) ;;  # looks like a tag (vX.Y.Z), proceed
         *)
@@ -154,6 +154,27 @@ BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
 CTX_NAME="ctx-${OS}-${ARCH}"
 MCP_NAME="ctx-mcp-${OS}-${ARCH}"
 
+# ── Preflight: sudo availability ─────────────────────────────────────
+# Under `curl ... | sh`, stdin is the curl pipe — not a TTY. If the
+# later `sudo mv` had to prompt for a password it would block forever
+# (no visible prompt, because sudo writes the prompt to /dev/tty but
+# reads the password from stdin). Detect that situation now and fail
+# fast with actionable guidance, before downloading ~30 MB of binaries
+# we wouldn't be able to install anyway.
+if [ ! -w "$INSTALL_DIR" ] && ! sudo -n true 2>/dev/null; then
+    INSTALLER_URL="https://raw.githubusercontent.com/${REPO}/main/install.sh"
+    echo "==> ${INSTALL_DIR} is not writable and sudo is not authenticated." >&2
+    echo "    Under 'curl | sh' sudo cannot prompt for a password (stdin is the pipe)." >&2
+    echo "    Pick one:" >&2
+    echo "      1) Pre-authenticate sudo, then re-run:" >&2
+    echo "           sudo -v && curl -fsSL ${INSTALLER_URL} | sh" >&2
+    echo "      2) Install to a user-writable prefix (no sudo):" >&2
+    echo "           curl -fsSL ${INSTALLER_URL} | CTX_INSTALL_DIR=\$HOME/.local/bin sh" >&2
+    echo "      3) Download first, then run with a real terminal:" >&2
+    echo "           curl -fsSL ${INSTALLER_URL} -o /tmp/ctx-install.sh && sh /tmp/ctx-install.sh" >&2
+    exit 1
+fi
+
 # ── Download ─────────────────────────────────────────────────────────
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -162,7 +183,11 @@ echo "==> Installing ctx ${VERSION} for ${OS}/${ARCH}"
 
 for asset in "$CTX_NAME" "$MCP_NAME" SHA256SUMS; do
     echo "    fetching ${asset}"
-    if ! curl -fsSL -o "${TMP}/${asset}" "${BASE_URL}/${asset}"; then
+    # --connect-timeout 15: fail fast if GitHub is unreachable instead
+    # of hanging on a stuck TCP handshake.
+    # --max-time 300: cap the whole transfer at 5 min. Binaries are
+    # ~30 MB; a stalled mid-download would otherwise hang silently.
+    if ! curl -fsSL --connect-timeout 15 --max-time 300 -o "${TMP}/${asset}" "${BASE_URL}/${asset}"; then
         echo "failed to download ${asset} — does ${VERSION} exist for ${OS}/${ARCH}?" >&2
         echo "see https://github.com/${REPO}/releases/${VERSION}" >&2
         exit 1
